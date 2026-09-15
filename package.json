@@ -1,14 +1,11 @@
 {
   "name": "lightblue-chat",
   "version": "1.0.0",
-  "description": "浅蓝微聊 - 去中心化聊天应用",
+  "description": "\u6d45\u84dd\u5fae\u804a - \u53bb\u4e2d\u5fc3\u5316\u804a\u5929\u5e94\u7528",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2"
   },
   "dependencies": {
     "leaflet": "^1.9.4"
