@@ -55,6 +55,9 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
+      - name: Install frontend dependencies
+        run: npm install
+
       - name: Set up Android SDK + NDK
         run: |
           export ANDROID_HOME=$HOME/android-sdk
@@ -81,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lightblue-chat-android
-          path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
 
   # Windows build (cross-compile not needed — use native runner)
   build-windows:
