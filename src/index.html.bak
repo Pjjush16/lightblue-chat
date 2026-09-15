@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>浅蓝微聊</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 顶部导航栏 -->
+        <header class="top-bar">
+            <span class="title" id="current-title">浅蓝微聊</span>
+            <button class="btn-icon" id="btn-search" title="搜索">🔍</button>
+            <button class="btn-icon" id="btn-add" title="添加">＋</button>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 页面容器 -->
+            <div class="page active" id="page-chat">
+                <div class="chat-list" id="chat-list">
+                    <!-- 聊天列表动态生成 -->
+                </div>
+            </div>
+
+            <div class="page" id="page-contacts">
+                <div class="section-header">联系人</div>
+                <div class="contact-list" id="contact-list">
+                    <!-- 联系人列表动态生成 -->
+                </div>
+            </div>
+
+            <div class="page" id="page-discover">
+                <div class="discover-item">
+                    <span class="icon">📡</span>
+                    <span>附近的人</span>
+                    <span class="arrow">›</span>
+                </div>
+                <div class="discover-item">
+                    <span class="icon">🔗</span>
+                    <span>设备发现</span>
+                    <span class="arrow">›</span>
+                </div>
+                <div class="discover-item">
+                    <span class="icon">📁</span>
+                    <span>文件传输</span>
+                    <span class="arrow">›</span>
+                </div>
+                <div class="discover-item">
+                    <span class="icon">🌐</span>
+                    <span>Mesh 网络</span>
+                    <span class="arrow">›</span>
+                </div>
+            </div>
+
+            <div class="page" id="page-profile">
+                <div class="profile-card">
+                    <div class="avatar-large" id="my-avatar">我</div>
+                    <div class="profile-info">
+                        <div class="nickname" id="my-nickname">我的昵称</div>
+                        <div class="device-id" id="my-device-id">设备ID: --</div>
+                    </div>
+                </div>
+                <div class="menu-list">
+                    <div class="menu-item">
+                        <span>设置</span>
+                        <span class="arrow">›</span>
+                    </div>
+                    <div class="menu-item">
+                        <span>关于</span>
+                        <span class="arrow">›</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 聊天详情页 -->
+            <div class="page" id="page-conversation">
+                <div class="conversation-header">
+                    <button class="btn-back" id="btn-back">‹</button>
+                    <span class="conv-title" id="conv-title">聊天</span>
+                </div>
+                <div class="messages" id="messages">
+                    <!-- 消息列表动态生成 -->
+                </div>
+                <div class="input-bar">
+                    <input type="text" id="msg-input" placeholder="输入消息..." autocomplete="off">
+                    <button class="btn-send" id="btn-send">发送</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部标签栏 -->
+        <nav class="tab-bar">
+            <div class="tab active" data-tab="chat">
+                <span class="tab-icon">💬</span>
+                <span class="tab-label">聊天</span>
+            </div>
+            <div class="tab" data-tab="contacts">
+                <span class="tab-icon">👥</span>
+                <span class="tab-label">通讯录</span>
+            </div>
+            <div class="tab" data-tab="discover">
+                <span class="tab-icon">🔍</span>
+                <span class="tab-label">发现</span>
+            </div>
+            <div class="tab" data-tab="profile">
+                <span class="tab-icon">👤</span>
+                <span class="tab-label">我</span>
+            </div>
+        </nav>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

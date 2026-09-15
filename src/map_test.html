@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天地图瓦片测试 - 最后的自由</title>
+    <link rel="stylesheet" href="lib/leaflet.css" />
+    <script src="lib/leaflet.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Microsoft YaHei', sans-serif; background: #1a1a2e; color: #e0e0e0; }
+        
+        #header {
+            background: #16213e;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2px solid #0f3460;
+        }
+        #header h1 {
+            font-size: 16px;
+            color: #e94560;
+        }
+        #status {
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background: #333;
+        }
+        #status.ok { background: #1b5e20; color: #a5d6a7; }
+        #status.fail { background: #b71c1c; color: #ef9a9a; }
+        #status.loading { background: #e65100; color: #ffcc80; }
+
+        #map-container {
+            display: flex;
+            height: calc(100vh - 50px);
+        }
+        
+        #map {
+            flex: 1;
+            height: 100%;
+            background: #0a0a0a;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: #16213e;
+            padding: 15px;
+            overflow-y: auto;
+            border-left: 2px solid #0f3460;
+        }
+
+        .info-section {
+            margin-bottom: 15px;
+        }
+        .info-section h3 {
+            font-size: 13px;
+            color: #e94560;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #0f3460;
+            padding-bottom: 4px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 3px 0;
+        }
+        .info-row .label { color: #888; }
+        .info-row .value { color: #e0e0e0; font-family: monospace; }
+        .info-row .value.ok { color: #4caf50; }
+        .info-row .value.fail { color: #f44336; }
+
+        #tile-log {
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 11px;
+            font-family: monospace;
+            background: #0a0a1a;
+            padding: 8px;
+            border-radius: 4px;
+            line-height: 1.6;
+        }
+        .tile-ok { color: #4caf50; }
+        .tile-fail { color: #f44336; }
+        .tile-loading { color: #ff9800; }
+
+        #controls {
+            margin-top: 10px;
+        }
+        #controls button {
+            display: block;
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 6px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            background: #0f3460;
+            color: #e0e0e0;
+        }
+        #controls button:hover {
+            background: #1a4a8a;
+        }
+        #controls button.active {
+            background: #e94560;
+            color: white;
+        }
+
+        .leaflet-container {
+            background: #0a0a0a !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>天地图瓦片测试 - 最后的自由 (Tauri Linux)</h1>
+        <div id="status" class="loading">加载中...</div>
+    </div>
+    
+    <div id="map-container">
+        <div id="map"></div>
+        <div id="sidebar">
+            <div class="info-section">
+                <h3>瓦片配置</h3>
+                <div class="info-row">
+                    <span class="label">图层</span>
+                    <span class="value" id="current-layer">卫星影像 + 注记</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Key</span>
+                    <span class="value">526d51...0f74</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">服务器</span>
+                    <span class="value">t0-t7 轮询</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">坐标系</span>
+                    <span class="value">WGS84 (EPSG:4326)</span>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>加载统计</h3>
+                <div class="info-row">
+                    <span class="label">请求总数</span>
+                    <span class="value" id="stat-total">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">成功</span>
+                    <span class="value ok" id="stat-ok">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">失败</span>
+                    <span class="value fail" id="stat-fail">0</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">平均耗时</span>
+                    <span class="value" id="stat-avg">--</span>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>当前视图</h3>
+                <div class="info-row">
+                    <span class="label">中心</span>
+                    <span class="value" id="view-center">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">缩放</span>
+                    <span class="value" id="view-zoom">--</span>
+                </div>
+            </div>
+
+            <div class="info-section">
+                <h3>瓦片日志</h3>
+                <div id="tile-log"></div>
+            </div>
+
+            <div id="controls">
+                <button class="active" onclick="setLayer('sat')">卫星影像 + 注记</button>
+                <button onclick="setLayer('vec')">矢量地图 + 注记</button>
+                <button onclick="setLayer('terrain')">地形 + 注记</button>
+                <button onclick="testSpecificTile()">测试指定瓦片</button>
+                <button onclick="clearLog()">清空日志</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tianditu configuration (same as Android app)
+        const TIANDITU_KEY = '';
+        
+        // Stats
+        let stats = { total: 0, ok: 0, fail: 0, times: [] };
+        
+        // Tile layer definitions
+        const layerDefs = {
+            sat: {
+                img: `http://127.0.0.1:8090/tile?layer=img_c&x={x}&y={y}&z={z}`,
+                anno: `http://127.0.0.1:8090/tile?layer=cia_c&x={x}&y={y}&z={z}`,
+                name: '卫星影像 + 注记'
+            },
+            vec: {
+                img: `http://127.0.0.1:8090/tile?layer=vec_c&x={x}&y={y}&z={z}`,
+                anno: `http://127.0.0.1:8090/tile?layer=cva_c&x={x}&y={y}&z={z}`,
+                name: '矢量地图 + 注记'
+            },
+            terrain: {
+                img: `http://127.0.0.1:8090/tile?layer=ter_c&x={x}&y={y}&z={z}`,
+                anno: `http://127.0.0.1:8090/tile?layer=cta_c&x={x}&y={y}&z={z}`,
+                name: '地形 + 注记'
+            }
+        };
+
+        // Initialize map - use CRS.Simple or custom CRS for CGCS2000
+        // Tianditu _c tiles use WGS84 lat/lon with standard tile numbering
+        const map = L.map('map', {
+            center: [39.9, 116.4], // Beijing
+            zoom: 10,
+            zoomControl: true,
+            attributionControl: false
+        });
+
+        let currentLayers = [];
+
+        function addTileLog(msg, type) {
+            const log = document.getElementById('tile-log');
+            const time = new Date().toLocaleTimeString();
+            const cls = type === 'ok' ? 'tile-ok' : type === 'fail' ? 'tile-fail' : 'tile-loading';
+            log.innerHTML += `<div class="${cls}">[${time}] ${msg}</div>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').textContent = stats.total;
+            document.getElementById('stat-ok').textContent = stats.ok;
+            document.getElementById('stat-fail').textContent = stats.fail;
+            if (stats.times.length > 0) {
+                const avg = stats.times.reduce((a, b) => a + b, 0) / stats.times.length;
+                document.getElementById('stat-avg').textContent = avg.toFixed(0) + 'ms';
+            }
+        }
+
+        function updateView() {
+            const c = map.getCenter();
+            document.getElementById('view-center').textContent = 
+                `${c.lat.toFixed(4)}, ${c.lng.toFixed(4)}`;
+            document.getElementById('view-zoom').textContent = map.getZoom();
+        }
+
+        function setLayer(type) {
+            // Remove existing layers
+            currentLayers.forEach(l => map.removeLayer(l));
+            currentLayers = [];
+
+            const def = layerDefs[type];
+            document.getElementById('current-layer').textContent = def.name;
+
+            // Update button states
+            document.querySelectorAll('#controls button').forEach(b => b.classList.remove('active'));
+            if (typeof event !== 'undefined' && event && event.target) {
+                event.target.classList.add('active');
+            }
+
+            // Create base layer
+            const baseLayer = L.tileLayer(def.img, {
+                maxZoom: 18,
+                minZoom: 3,
+                crossOrigin: true
+            });
+
+            // Create annotation layer
+            const annoLayer = L.tileLayer(def.anno, {
+                maxZoom: 18,
+                minZoom: 3,
+                crossOrigin: true,
+                opacity: 0.8
+            });
+
+            // Track tile loading
+            baseLayer.on('tileloadstart', function(e) {
+                e.tile._startTime = Date.now();
+                stats.total++;
+                updateStats();
+            });
+
+            baseLayer.on('tileload', function(e) {
+                const elapsed = Date.now() - (e.tile._startTime || Date.now());
+                stats.ok++;
+                stats.times.push(elapsed);
+                if (stats.times.length > 50) stats.times.shift();
+                
+                const coords = e.tile.src ? e.tile.src.match(/[XYL]=\d+/g) : [];
+                addTileLog(`OK ${elapsed}ms ${coords.join(' ')}`, 'ok');
+                updateStats();
+            });
+
+            baseLayer.on('tileerror', function(e) {
+                stats.fail++;
+                const coords = e.tile.src ? e.tile.src.match(/[XYL]=\d+/g) : [];
+                addTileLog(`FAIL ${coords.join(' ')} - ${e.error?.message || 'unknown'}`, 'fail');
+                
+                // Check if tile is gray
+                if (e.tile.complete) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = e.tile.naturalWidth || 256;
+                        canvas.height = e.tile.naturalHeight || 256;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(e.tile, 0, 0);
+                        const data = ctx.getImageData(0, 0, 10, 10).data;
+                        const avg = Array.from(data).reduce((a, b) => a + b, 0) / data.length;
+                        addTileLog(`  像素均值: ${avg.toFixed(1)} ${avg < 10 ? '(黑色/空)' : avg > 200 ? '(白色)' : '(有内容)'}`, avg < 10 ? 'fail' : 'ok');
+                    } catch(err) {
+                        addTileLog(`  无法检查像素: ${err.message}`, 'fail');
+                    }
+                }
+                updateStats();
+            });
+
+            annoLayer.on('tileerror', function(e) {
+                const coords = e.tile.src ? e.tile.src.match(/[XYL]=\d+/g) : [];
+                addTileLog(`注记FAIL ${coords.join(' ')}`, 'fail');
+            });
+
+            baseLayer.addTo(map);
+            annoLayer.addTo(map);
+            currentLayers = [baseLayer, annoLayer];
+
+            addTileLog(`切换到: ${def.name}`, 'loading');
+            
+            // Update status
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = '加载中...';
+            statusEl.className = 'loading';
+            
+            // Check after 3 seconds
+            setTimeout(() => {
+                if (stats.ok > 0 && stats.fail === 0) {
+                    statusEl.textContent = '正常';
+                    statusEl.className = 'ok';
+                } else if (stats.fail > 0 && stats.ok === 0) {
+                    statusEl.textContent = '全部失败';
+                    statusEl.className = 'fail';
+                } else if (stats.fail > 0) {
+                    statusEl.textContent = '部分失败';
+                    statusEl.className = 'fail';
+                }
+            }, 3000);
+        }
+
+        function testSpecificTile() {
+            const x = prompt('X (列号):', '104');
+            const y = prompt('Y (行号):', '52');
+            const z = prompt('Z (缩放级别):', '7');
+            if (!x || !y || !z) return;
+
+            const url = `http://t0.tianditu.gov.cn/DataServer?T=img_c&X=${x}&Y=${y}&L=${z}&tk=${TIANDITU_KEY}`;
+            addTileLog(`手动测试: X=${x} Y=${y} Z=${z}`, 'loading');
+
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            const start = Date.now();
+            
+            img.onload = function() {
+                const elapsed = Date.now() - start;
+                addTileLog(`手动OK: ${elapsed}ms, ${img.naturalWidth}x${img.naturalHeight}`, 'ok');
+                
+                // Check pixel content
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                
+                let sum = 0, min = 255, max = 0;
+                for (let i = 0; i < data.length; i += 4) {
+                    const v = (data[i] + data[i+1] + data[i+2]) / 3;
+                    sum += v;
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
+                const avg = sum / (data.length / 4);
+                const std = Math.sqrt(data.length / 4 > 0 ? 
+                    Array.from({length: Math.min(1000, data.length/4)}, (_, j) => {
+                        const idx = j * 4;
+                        const v = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+                        return (v - avg) * (v - avg);
+                    }).reduce((a, b) => a + b, 0) / (data.length / 4) : 0);
+                
+                addTileLog(`  像素: 均值=${avg.toFixed(1)} 标准差=${std.toFixed(1)} 范围=[${min.toFixed(0)},${max.toFixed(0)}]`, 'ok');
+                
+                if (std < 5) {
+                    addTileLog(`  警告: 标准差极低(${std.toFixed(1)})，可能是纯色/灰色图片`, 'fail');
+                } else {
+                    addTileLog(`  结论: 包含真实图像数据，非灰色`, 'ok');
+                }
+            };
+            
+            img.onerror = function() {
+                const elapsed = Date.now() - start;
+                addTileLog(`手动FAIL: ${elapsed}ms, 无法加载`, 'fail');
+            };
+            
+            img.src = url;
+        }
+
+        function clearLog() {
+            document.getElementById('tile-log').innerHTML = '';
+            stats = { total: 0, ok: 0, fail: 0, times: [] };
+            updateStats();
+        }
+
+        // Events
+        map.on('moveend', updateView);
+        map.on('zoomend', updateView);
+
+        // Initialize with satellite view
+        setLayer('sat');
+        updateView();
+        
+        addTileLog('地图初始化完成，开始加载天地图瓦片...', 'loading');
+    </script>
+</body>
+</html>

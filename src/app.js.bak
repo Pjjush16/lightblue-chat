@@ -1,0 +1,361 @@
+// 浅蓝微聊 - 前端逻辑（无账户体系，纯 P2P）
+const { invoke } = window.__TAURI__?.core || {};
+
+// ============ 本地身份（无账户，自由昵称 + 设备指纹）============
+function loadIdentity() {
+    const saved = localStorage.getItem('lightblue_identity');
+    if (saved) {
+        try { return JSON.parse(saved); } catch { /* 损坏则重新创建 */ }
+    }
+    return null;
+}
+
+function saveIdentity(identity) {
+    localStorage.setItem('lightblue_identity', JSON.stringify(identity));
+}
+
+function generateDeviceId() {
+    // 本地生成唯一设备指纹，不依赖任何服务器
+    let id = localStorage.getItem('lightblue_device_id');
+    if (!id) {
+        id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem('lightblue_device_id', id);
+    }
+    return id;
+}
+
+// ============ 数据模型 ============
+const state = {
+    currentTab: 'chat',
+    currentChat: null,
+    identity: loadIdentity(),
+    deviceId: generateDeviceId(),
+    contacts: [
+        { id: 'c1', name: '小助手', avatar: '🤖', status: 'online' },
+        { id: 'c2', name: '姚姚', avatar: '姚', status: 'online' },
+        { id: 'c3', name: '设备 A', avatar: '📱', status: 'offline' },
+    ],
+    conversations: {
+        'c1': [
+            { from: 'other', text: '你好！浅蓝微聊已就绪。', time: '09:00' },
+            { from: 'self', text: '收到，界面看起来很棒！', time: '09:01' },
+            { from: 'other', text: '无需注册，自由命名，纯 P2P 直连。', time: '09:02' },
+        ],
+        'c2': [
+            { from: 'other', text: 'Tauri 版本开发中，很快就能用了。', time: '昨天' },
+        ]
+    },
+    unread: { 'c1': 0, 'c2': 1 }
+};
+
+// ============ 首次启动：昵称设置引导 ============
+function showNicknameSetup() {
+    const overlay = document.createElement('div');
+    overlay.className = 'nickname-setup-overlay';
+    overlay.innerHTML = `
+        <div class="nickname-setup-card">
+            <div class="setup-icon">💬</div>
+            <h2>浅蓝微聊</h2>
+            <p class="setup-desc">无需注册，取个名字就能开始</p>
+            <input type="text" id="setup-nickname" class="setup-input"
+                   placeholder="想叫什么就叫什么" maxlength="20" autocomplete="off">
+            <button class="setup-btn" id="setup-confirm">开始聊天</button>
+            <p class="setup-hint">名字随时可以改，不绑定任何账户</p>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const input = overlay.querySelector('#setup-nickname');
+    const btn = overlay.querySelector('#setup-confirm');
+
+    input.focus();
+
+    function confirm() {
+        const name = input.value.trim();
+        if (!name) {
+            input.classList.add('shake');
+            setTimeout(() => input.classList.remove('shake'), 500);
+            return;
+        }
+        state.identity = {
+            nickname: name,
+            avatar: name.charAt(0),
+            createdAt: new Date().toISOString()
+        };
+        saveIdentity(state.identity);
+        overlay.remove();
+        applyIdentity();
+    }
+
+    btn.addEventListener('click', confirm);
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') confirm();
+    });
+}
+
+function applyIdentity() {
+    if (!state.identity) return;
+    const nicknameEl = document.getElementById('my-nickname');
+    const avatarEl = document.getElementById('my-avatar');
+    const deviceIdEl = document.getElementById('my-device-id');
+
+    if (nicknameEl) nicknameEl.textContent = state.identity.nickname;
+    if (avatarEl) avatarEl.textContent = state.identity.avatar;
+    if (deviceIdEl) deviceIdEl.textContent = `设备: ${state.deviceId.slice(0, 16)}...`;
+}
+
+// ============ 初始化 ============
+document.addEventListener('DOMContentLoaded', () => {
+    initTabs();
+    renderChatList();
+    renderContactList();
+    initDeviceInfo();
+    initMessaging();
+
+    // 无账户体系：首次使用直接设置昵称，无注册/登录
+    if (!state.identity) {
+        showNicknameSetup();
+    } else {
+        applyIdentity();
+    }
+
+    // 昵称编辑（点击即可修改）
+    document.getElementById('my-nickname')?.addEventListener('click', () => {
+        const el = document.getElementById('my-nickname');
+        const current = state.identity?.nickname || '';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = current;
+        input.className = 'nickname-edit-input';
+        input.maxLength = 20;
+
+        function save() {
+            const newName = input.value.trim();
+            if (newName && state.identity) {
+                state.identity.nickname = newName;
+                state.identity.avatar = newName.charAt(0);
+                saveIdentity(state.identity);
+            }
+            applyIdentity();
+            input.replaceWith(el);
+        }
+
+        el.replaceWith(input);
+        input.focus();
+        input.select();
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') save();
+        });
+    });
+});
+
+// ============ Tauri 桥接 ============
+async function initDeviceInfo() {
+    try {
+        if (invoke) {
+            const info = await invoke('get_device_info');
+            const data = JSON.parse(info);
+            document.getElementById('my-device-id').textContent = `设备: ${data.hostname}`;
+        }
+    } catch (e) {
+        document.getElementById('my-device-id').textContent = '设备: 本地模式';
+    }
+}
+
+// ============ 标签切换 ============
+function initTabs() {
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const target = tab.dataset.tab;
+            if (target === state.currentTab) return;
+
+            // 隐藏会话页
+            document.getElementById('page-conversation').classList.remove('active');
+
+            // 切换标签
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // 切换页面
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(`page-${target}`).classList.add('active');
+
+            // 更新标题
+            const titles = { chat: '浅蓝微聊', contacts: '通讯录', discover: '发现', profile: '我' };
+            document.getElementById('current-title').textContent = titles[target];
+
+            state.currentTab = target;
+        });
+    });
+}
+
+// ============ 聊天列表 ============
+function renderChatList() {
+    const list = document.getElementById('chat-list');
+    list.innerHTML = '';
+
+    const chatIds = Object.keys(state.conversations);
+    if (chatIds.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <span class="icon">💬</span>
+                <span class="text">暂无聊天</span>
+            </div>`;
+        return;
+    }
+
+    chatIds.forEach(id => {
+        const contact = state.contacts.find(c => c.id === id);
+        if (!contact) return;
+
+        const msgs = state.conversations[id];
+        const lastMsg = msgs[msgs.length - 1];
+        const unread = state.unread[id] || 0;
+
+        const item = document.createElement('div');
+        item.className = 'chat-item';
+        item.innerHTML = `
+            <div class="avatar">${contact.avatar}</div>
+            <div class="chat-info">
+                <div class="chat-name">${contact.name}</div>
+                <div class="chat-last">${lastMsg.text}</div>
+            </div>
+            <span class="chat-time">${lastMsg.time}</span>
+            ${unread > 0 ? `<span class="chat-badge">${unread}</span>` : ''}
+        `;
+        item.addEventListener('click', () => openConversation(id));
+        list.appendChild(item);
+    });
+}
+
+// ============ 联系人列表 ============
+function renderContactList() {
+    const list = document.getElementById('contact-list');
+    list.innerHTML = '';
+
+    state.contacts.forEach(contact => {
+        const item = document.createElement('div');
+        item.className = 'chat-item';
+        item.innerHTML = `
+            <div class="avatar">${contact.avatar}</div>
+            <div class="chat-info">
+                <div class="chat-name">${contact.name}</div>
+                <div class="chat-last">${contact.status === 'online' ? '在线' : '离线'}</div>
+            </div>
+        `;
+        item.addEventListener('click', () => openConversation(contact.id));
+        list.appendChild(item);
+    });
+}
+
+// ============ 打开会话 ============
+function openConversation(contactId) {
+    const contact = state.contacts.find(c => c.id === contactId);
+    if (!contact) return;
+
+    state.currentChat = contactId;
+    document.getElementById('conv-title').textContent = contact.name;
+
+    // 切换到会话页
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-conversation').classList.add('active');
+
+    renderMessages();
+    clearUnread(contactId);
+}
+
+// ============ 渲染消息 ============
+function renderMessages() {
+    const container = document.getElementById('messages');
+    container.innerHTML = '';
+
+    const msgs = state.conversations[state.currentChat] || [];
+    let lastTime = '';
+
+    msgs.forEach(msg => {
+        // 时间分隔
+        if (msg.time !== lastTime) {
+            const timeEl = document.createElement('div');
+            timeEl.className = 'msg-time';
+            timeEl.textContent = msg.time;
+            container.appendChild(timeEl);
+            lastTime = msg.time;
+        }
+
+        const row = document.createElement('div');
+        row.className = `msg-row ${msg.from}`;
+        row.innerHTML = `<div class="msg-bubble">${escapeHtml(msg.text)}</div>`;
+        container.appendChild(row);
+    });
+
+    // 滚动到底部
+    container.scrollTop = container.scrollHeight;
+}
+
+// ============ 发送消息 ============
+function initMessaging() {
+    const input = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('btn-send');
+    const backBtn = document.getElementById('btn-back');
+
+    sendBtn.addEventListener('click', () => sendMessage());
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    backBtn.addEventListener('click', () => {
+        document.getElementById('page-conversation').classList.remove('active');
+        document.getElementById(`page-${state.currentTab}`).classList.add('active');
+        state.currentChat = null;
+        renderChatList();
+    });
+}
+
+function sendMessage() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text || !state.currentChat) return;
+
+    const now = new Date();
+    const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    // 添加到消息列表
+    if (!state.conversations[state.currentChat]) {
+        state.conversations[state.currentChat] = [];
+    }
+    state.conversations[state.currentChat].push({ from: 'self', text, time });
+
+    input.value = '';
+    renderMessages();
+
+    // 模拟回复
+    setTimeout(() => {
+        const replies = [
+            '收到！',
+            '好的，我看看。',
+            '这个方案不错。',
+            '了解了，继续推进。',
+            'Mesh 网络连接正常。',
+            'BLE 发现中...',
+            'Wi-Fi Direct 传输完成。',
+        ];
+        const reply = replies[Math.floor(Math.random() * replies.length)];
+        state.conversations[state.currentChat].push({ from: 'other', text: reply, time });
+        renderMessages();
+    }, 1000 + Math.random() * 2000);
+}
+
+// ============ 工具函数 ============
+function clearUnread(contactId) {
+    state.unread[contactId] = 0;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
