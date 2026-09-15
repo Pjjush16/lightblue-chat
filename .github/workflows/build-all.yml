@@ -86,7 +86,7 @@ jobs:
           name: lightblue-chat-android
           path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
 
-  # Windows build (cross-compile not needed — use native runner)
+  # Windows build (native runner, no cross-compile)
   build-windows:
     runs-on: windows-latest
     steps:
@@ -110,7 +110,7 @@ jobs:
           name: lightblue-chat-windows
           path: src-tauri/target/release/bundle/nsis/*.exe
 
-  # macOS build
+  # macOS build (universal binary: aarch64 + x86_64)
   build-macos:
     runs-on: macos-latest
     steps:
@@ -118,6 +118,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
@@ -125,7 +127,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
-      - name: Build macOS
+      - name: Build macOS (universal)
         run: cd src-tauri && cargo tauri build --target universal-apple-darwin
 
       - name: Upload macOS app
